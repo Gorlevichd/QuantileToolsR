@@ -12,9 +12,15 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r}
 library(readxl)
 library(zoo)
-library(quantreg)
-library(ggplot2)
-library(stringr)
+library(plotly)
+library(dplyr)
+library(dynlm)
+
+source("Source/QADF.R") # Import QADF, I have customly written from (Koenker, Xiao, 2004)
+source("Source/QGranger.R") # Import QGranger, works through F-test
+source("Source/QECM.R")
+source("Source/QQ.R")
+source("Source/plotters.R")
 
 options(scipen=999)
 ```
@@ -22,93 +28,109 @@ options(scipen=999)
 ## Load and preprocess data
 
 ```{r}
+# Get data, convert to ts format
 data <- read_excel("EXDATA.xlsx")
 date <- data$Date
 values <- subset(data, select = -c(Date))
-zoo_values <- zoo(values, order.by = date)
-ts_no_dates <- ts(values)
-autoplot(zoo_values, nc = 1) + 
-  facet_free()
+
+# log and approximate NA
+zoo_values <- zoo(na.approx(log(values)), order.by = date)
+ts_no_dates <- na.approx(ts(log(values)))
+
+# Extract variables
+ER_log <- ts_no_dates[, "ER"]
+EPU_log <- ts_no_dates[, "EPU"]
+TRD_log <- ts_no_dates[, "TRD"]
+OP_log <- ts_no_dates[, "OP"]
+# Quantiles of interest
+taus <- seq(0.1, 0.9, 0.1)
 ```
+
+## Visualization
+
+### ER
+
+```{r}
+# Plot the data
+ts_plot_ly(ER_log, date)
+```
+
+### EPU
+
+```{r}
+ts_plot_ly(EPU_log, date)
+```
+
+```{r}
+ts_plot_ly(OP_log, date)
+```
+
+```{r}
+ts_plot_ly(TRD_log, date)
+```
+
 
 ## Quantile Augmented Dickey-Fuller Test
 
 Select ARDF lag and trend presence:
 
-```{r}
-ARDF_lag_selection <- function(variable, tau, dq_max = 7) {
-  # Just lag selection through median AIC
-  print(str_glue("Selecting lags"))
-  AIC_min <- 0
-  best_dq <- 1 
-  for (dq in 1:dq_max) {
-    model <- dynrq(variable ~ 
-                     trend(variable) + 
-                     L(variable, 1:dq),
-                   tau = tau, start = dq_max)
-    AIC_ <- median(AIC(model))
-    if (AIC_ < AIC_min) {
-      AIC_min <- AIC_
-      best_dq <- dq
-    } 
-  }
-  print(str_glue("Optimal lags: {best_dq}"))
-  # Model for ADF-test
-  print(str_glue("Fitting ADF"))
-  ADF_model <- dynrq(d(variable) ~ 
-                       trend(variable) + 
-                       L(variable, 1) + 
-                       L(diff(variable), 1:max(1, best_dq-1)),
-                     tau = tau)
-  taus <- c()
-  coeffs <- c()
-  t_stats <- c()
-  p_values <- c()
-  summaries <- summary(ADF_model, se = "boot")
-  print(str_glue("Building df"))
-  for (tau_index in seq_along(summaries)) {
-    taus <- c(taus, tau[tau_index])
-    per_tau_summary <- summaries[[tau_index]]
-    per_tau_coeff <- coefficients(per_tau_summary)
-    coeffs <- c(coeffs, round(per_tau_coeff[3, 1], digits=4))
-    t_stats <- c(t_stats, round(per_tau_coeff[3, 3], digits=2))
-    p_values <- c(p_values, round(per_tau_coeff[3, 4], digits=2))
-  }
-  return(data.frame(coeffs = coeffs,
-                    t_stat = t_stats,
-                    p_value = p_values))
-}
-```
-
-Check for trend significance:
+### ER
 
 ```{r}
-tau <- seq(0.1, 0.9, 0.1)
-results <- data.frame(tau = tau)
-for (var in c("ER", "EPU", 
-              "OP", "MC", 
-              "TRD")) {
-  print(str_glue("VAR: {var}"))
-  series <- ts_no_dates[, var]
-  var_result <- ARDF_lag_selection(series, 
-                                   tau = tau)
-  colnames(var_result) <- paste(
-    str_glue("{var}:"), 
-    colnames(var_result)
-    )
-  results <- cbind(results, var_result)
-  print(str_glue("------"))
-}
+ER_adf <- QADF(ER_log, taus, 7)
 ```
+
+### EPU
 
 ```{r}
-```
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+EPU_adf <- QADF(EPU_log, taus, 7)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+### OP
+
+```{r}
+OP_adf <- QADF(OP_log, taus, 7)
+```
+
+### TRD
+
+```{r}
+TRD_adf <- QADF(TRD_log, taus, 7)
+```
+
+
+### Granger Test
+
+### ER to EPU
+
+```{r}
+ER_EPU_granger <- quantile_granger(ER_log, EPU_log, 3, taus)
+```
+
+### EPU to ER
+
+```{r}
+EPU_ER_granger <- quantile_granger(EPU_log, ER_log, 3, taus)
+```
+
+## QECM
+
+### Control: Trade Volume
+
+```{r}
+QECM(ER_log, EPU_log, TRD_log, 3, 3, 3, taus)
+```
+
+### Control: Oil Price
+
+```{r}
+QECM(ER_log, EPU_log, OP_log, 3, 3, 3, taus)
+```
+
+## Quantile-in-Quantile
+
+```{r}
+source("Source/plotters.R")
+QQ_EPU <- QQRegression(ER_log, EPU_log, taus, taus)
+QQplot(QQ_EPU)
+``` 
