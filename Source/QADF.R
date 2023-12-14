@@ -72,9 +72,8 @@ QADF <- function(variable, taus, dq_max) {
     coeff_diff <- matrix(coeff_upper - coeff_lower)
     
     # Zero padded variable series
-    Y_lag <- na.fill(stats::lag(variable, -1, na.pad = TRUE), 0)
-    Y_diff_lags <- na.fill(stats::lag(diff(zoo(variable)), -(1:lag_max)), 0)
-
+    Y_lag <- na.fill(zoo::lag.zoo(zoo(variable), -1, na.pad = TRUE), 0)
+    Y_diff_lags <- na.fill(zoo::lag.zoo(diff(zoo(variable)), -(1:lag_max)), 0)
     # Matrix with mean of variables
     X <- cbind(zoo(1),
                mean(seq(1:Y_length)),
