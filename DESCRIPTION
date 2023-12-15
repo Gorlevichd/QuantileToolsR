@@ -1,0 +1,11 @@
+Package: QuantileTools
+Type: Package
+Title: Additional tools built on top of quantreg package
+Version: 0.0.1
+RoxygenNote: 7.2.3
+Imports: 
+        zoo
+        plotly
+        quantreg
+        dplyr
+        reshape2

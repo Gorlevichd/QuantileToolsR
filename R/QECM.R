@@ -1,6 +1,15 @@
-library(quantreg)
-library(dplyr)
-
+#' Quantile Error Correction model with step selection
+#' 
+#' Fits QECM and selects lags
+#' @param p Dependent variable
+#' @param q1 Independent variable 1
+#' @param q2 Inpendendt variable 2
+#' @param p_lag Maximum lag of p
+#' @param q1_lag Maximum lag of q1
+#' @param q2_lag Maximum lag of q2
+#' @param tau_list List of quantiles for fit
+#' @return Dataframe with fitted coefficients
+#' @export
 QECM <- function(p, q1, q2, 
                  p_lag, q1_lag, q2_lag,
                  tau_list) {
@@ -11,10 +20,10 @@ QECM <- function(p, q1, q2,
     "L(d(q1), ", 1:q1_lag, ")")
   q2_lag_var <- paste0(
     "L(d(q2), ", 1:q2_lag, ")")
-  ECM_var <- c("3L(coint_eps, 1)", 
-               str_glue("{p_lag_var}"),  
-               str_glue("{q1_lag_var}"),
-               str_glue("{q2_lag_var}"),
+  ECM_var <- c("L(coint_eps, 1)", 
+               stringr::str_glue("{p_lag_var}"),  
+               stringr::str_glue("{q1_lag_var}"),
+               stringr::str_glue("{q2_lag_var}"),
                "Intercept_coint", "q1_coint", "q2_coint")
   result_df <- data.frame(var = ECM_var)
 
@@ -46,20 +55,22 @@ QECM <- function(p, q1, q2,
       "L(d(q2),", 1:q2_lag, ")",
       collapse = " + ")
     ECM_str_formula <- paste0("d(p) ~ L(coint_eps, 1) + ", 
-                              str_glue("{p_lag_formula} + 
-                                       {q1_lag_formula} + 
-                                       {q2_lag_formula}"))
+                              stringr::str_glue(
+                              "{p_lag_formula} + 
+                              {q1_lag_formula} + 
+                              {q2_lag_formula}")
+                              )
     
     # Select best model with stepwise AIC
     # start = 10, otw different length because of lags
-    ECM_model <- step(dynrq(formula(ECM_str_formula),
-                              tau = tau, 
-                              start = 10),
-                        trace = 0)
+    ECM_model <- step(quantreg::dynrq(
+      formula(ECM_str_formula),
+      tau = tau, 
+      start = max(p_lag, q1_lag, q2_lag) + 2), trace = 0)
     # Extract coefficients, join with cointeg rating coefficients
     ECM_result_matr <- coefficients(summary(ECM_model, se = "boot"))
-    ECM_coeffs <- -matrix(ECM_result_matr[, 1])
-    coint_coeffs <- matrix(coint_result_matr[, 1])
+    ECM_coeffs <- matrix(ECM_result_matr[, 1])
+    coint_coeffs <- matrix(-coint_result_matr[, 1])
     ECM_coeffs <- rbind(ECM_coeffs, coint_coeffs)
     colnames(ECM_coeffs) <- tau
 
@@ -86,7 +97,6 @@ QECM <- function(p, q1, q2,
                         attr(ECM_model$terms , "term.labels"),
                         coint_terms)
     result_df <- merge(result_df, ECM_df, all = TRUE, on = "var")
-    print(result_df)
   }
   return(result_df)
 }

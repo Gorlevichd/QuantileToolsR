@@ -1,9 +1,5 @@
-library(quantreg)
-library(zoo)
-library(stringr)
 library(stats)
 
-options(warn = -1)
 
 # Find last significant lag in [1, dq_max]
 QADF_lag_selection <- function(variable, tau, dq_max) {
@@ -25,7 +21,17 @@ QADF_lag_selection <- function(variable, tau, dq_max) {
 }
 
 
-## ADF test statistic, (Koenker, Xiao, 2004)
+#' Quantile ADF test
+#' 
+#' Calculates auantile ADF test statistic based on (Koenker, Xiao, 2004)
+#' $Q(y_t \mid I_t, tau) = \mu_1(\tau) + \mu_2(\tau) + \alpha y_{t - 1} + \sum_{j = 1}^{dq} \alpha_{j} \Delta y_{t - j}$
+#' $H_0$: Non-stationary -> $H_0: \alpha = 1$
+#' @param variable The time-series, which is tested for stationarity
+#' @param taus Vector of quantiles in (0, 1)
+#' @param dq_max Maximal value of lag, which is used for lag selectiion
+#' @return Dataframe with quantiles and corresponding coefficient before $alpha$,
+#'        marked with ***, **, * corresponding, to $\alpha$ \geq 1 P-value (10%, 5%, 1%)
+#' @export
 QADF <- function(variable, taus, dq_max) {
   t_stats <- c()
   alphas_hat <- c()
@@ -72,8 +78,8 @@ QADF <- function(variable, taus, dq_max) {
     coeff_diff <- matrix(coeff_upper - coeff_lower)
     
     # Zero padded variable series
-    Y_lag <- na.fill(zoo::lag.zoo(zoo(variable), -1, na.pad = TRUE), 0)
-    Y_diff_lags <- na.fill(zoo::lag.zoo(diff(zoo(variable)), -(1:lag_max)), 0)
+    Y_lag <- na.fill(stats::lag(zoo(variable), -1, na.pad = TRUE), 0)
+    Y_diff_lags <- na.fill(stats::lag(diff(zoo(variable)), -(1:lag_max)), 0)
     # Matrix with mean of variables
     X <- cbind(zoo(1),
                mean(seq(1:Y_length)),
@@ -107,7 +113,11 @@ QADF <- function(variable, taus, dq_max) {
     alphas_hat <- c(alphas_hat, alpha_hat)
     t_stats <- c(t_stats, t_stat)
   }
-  t_stats_significant <- which(t_stats < DF_stats[tau_i])
-  alphas_hat[t_stats_significant] <- paste0(alphas_hat[t_stats_significant], "*")
-  return(data.frame(alpha = alphas_hat))
+  t_stats_significant <- which(t_stats > DF_stats[tau_i])
+  alphas_hat <- round(alphas_hat, digits = 4)
+  alphas_hat[t_stats_significant] <- paste0(
+    alphas_hat[t_stats_significant], 
+    "*"
+  )
+  return(data.frame(Quantile = taus, Coefficients = alphas_hat))
 }

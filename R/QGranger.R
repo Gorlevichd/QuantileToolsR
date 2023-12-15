@@ -1,7 +1,15 @@
 ### Quantile Granger Test module
 # Done through F-test
-library(quantreg)
 
+#' Quantile Granger Test
+#' 
+#' Performs a Granger Test with F-stat
+#' @param X Independent variable
+#' @param Y Dependent variable
+#' @param qar_order_max Order of Y autoregression
+#' @param taus List of quantiles
+#' @return P-values of F_test
+#' @export
 QGranger <- function(X, Y, qar_order_max, taus) {
   # Init empty df 
   F_pval_df <- data.frame(tau = taus)
@@ -14,11 +22,14 @@ QGranger <- function(X, Y, qar_order_max, taus) {
       tau = taus[tau_i]
       # Get model with X variable and Y lags
       Y_with_X_rq <- quantreg::dynrq(
-        d(Y) ~ L(d(Y), 1:qar_order) + L(d(X), 1),
+        d(Y) ~ 
+          L(d(Y), 1:qar_order) + 
+          L(d(X), 1),
         tau = tau)
       # Model without X, just Y lags
       just_Y_rq <- quantreg::dynrq(
-        d(Y) ~ L(d(Y), 1:qar_order),
+        d(Y) ~ 
+          L(d(Y), 1:qar_order),
         tau = tau)
       # H0: X lags do not affect Y
       # Check if just_Y_rq is statistically the same as Y_with_X_rq
@@ -29,8 +40,8 @@ QGranger <- function(X, Y, qar_order_max, taus) {
       )[["table"]]$pvalue
       F_pval_q <- c(F_pval_q, F_pval_tau)
     }
-    F_pval_q_df <- data.frame(F_pval_q)
-    colnames(F_pval_q_df) <- str_glue("AR({qar_order})")
+    F_pval_q_df <- data.frame(round(F_pval_q, digits = 4))
+    colnames(F_pval_q_df) <- stringr::str_glue("AR({qar_order})")
     F_pval_q_df$tau <- taus
     F_pval_df <- merge(F_pval_df, 
                        F_pval_q_df, 
